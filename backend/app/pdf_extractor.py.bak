@@ -1,0 +1,83 @@
+# backend/app/pdf_extractor.py
+import pdfplumber, re
+import pandas as pd
+
+def parse_amount(s):
+    if s is None:
+        return None
+    s = str(s).strip()
+    s = re.sub(r"\(.*?\)", "", s)
+    # Remove footnote markers
+    s = re.sub(r"\[\d+\]", "", s)
+    multi = 1
+    sl = s.lower()
+    if "crore" in sl:
+        multi = 1e7
+        s = s.lower().split("crore")[0]
+    s = re.sub(r"[^\d\.\-\,]", "", s)
+    s = s.replace(",", "")
+    if s == "":
+        return None
+    try:
+        return float(s) * multi
+    except:
+        return None
+
+KEY_LABELS = {
+    "total_assets": ["total assets", "total asset"],
+    "total_liabilities": ["total liabilities", "total liability"],
+    "total_equity": ["total equity", "shareholders' funds", "shareholders funds"],
+    "revenue": ["total revenue", "revenue", "net sales", "income from operations"],
+    "profit_after_tax": ["profit after tax", "net profit", "profit for the year", "profit for the period"],
+    "ebitda": ["ebitda"],
+    "current_assets": ["current assets"],
+    "current_liabilities": ["current liabilities"]
+}
+
+def extract_tables_and_text(pdf_path):
+    tables = []
+    texts = []
+    with pdfplumber.open(pdf_path) as pdf:
+        for page in pdf.pages:
+            text = page.extract_text() or ""
+            texts.append(text)
+            try:
+                for t in page.extract_tables():
+                    if t and len(t) > 1:
+                        df = pd.DataFrame(t[1:], columns=t[0])
+                        tables.append(df)
+            except Exception:
+                continue
+    return tables, "\n".join(texts)
+
+def find_amount_in_df(df, keywords):
+    for col in df.columns:
+        for i, val in df[col].iteritems():
+            if not isinstance(val, str):
+                continue
+            low = val.lower()
+            for kw in keywords:
+                if kw in low:
+                    row = df.loc[i].values
+                    for cell in row:
+                        amt = parse_amount(cell)
+                        if amt is not None:
+                            return amt
+    return None
+
+def extract_key_numbers(tables, text):
+    out = {}
+    for key, kws in KEY_LABELS.items():
+        found = None
+        for df in tables:
+            found = find_amount_in_df(df, kws)
+            if found:
+                break
+        if not found:
+            for kw in kws:
+                m = re.search(rf"{kw}.*?([0-9\,\.\s]+(?:crore|lakh|bn|billion|m)?)", text, flags=re.I)
+                if m:
+                    found = parse_amount(m.group(1))
+                    break
+        out[key] = found
+    return out

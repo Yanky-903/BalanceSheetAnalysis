@@ -1,0 +1,45 @@
+# backend/app/llm_client.py
+import os, json, logging
+import openai
+
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+if not OPENAI_API_KEY:
+    raise RuntimeError("OPENAI_API_KEY must be set")
+openai.api_key = OPENAI_API_KEY
+
+MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")  # choose available model
+
+SYSTEM_PROMPT = (
+    "You are a concise financial analyst assistant. Input: a compact JSON with company and numeric_context. "
+    "Output: a valid JSON with keys: tldr (1 sentence), highlights[], risks[], actions[]. "
+    "Be numeric when possible. Return only JSON."
+)
+
+def make_prompt(company_name, numeric_context, question="Summarize for CEO"):
+    payload = {"company": company_name, "numeric_context": numeric_context, "question": question}
+    return [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "user", "content": "NUMERIC_CONTEXT=" + json.dumps(payload)}
+    ]
+
+def call_llm(company_name, numeric_context, question="Summarize for CEO"):
+    messages = make_prompt(company_name, numeric_context, question)
+    resp = openai.ChatCompletion.create(
+        model=MODEL,
+        messages=messages,
+        temperature=0.0,
+        max_tokens=400
+    )
+    text = resp["choices"][0]["message"]["content"]
+    # try to parse JSON
+    try:
+        return json.loads(text)
+    except Exception:
+        import re
+        m = re.search(r"\{.*\}", text, flags=re.S)
+        if m:
+            try:
+                return json.loads(m.group(0))
+            except:
+                return {"raw": text}
+        return {"raw": text}

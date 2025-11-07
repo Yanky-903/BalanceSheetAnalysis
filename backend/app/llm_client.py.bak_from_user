@@ -1,0 +1,92 @@
+import os
+import json
+from openai import OpenAI
+
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+if not OPENAI_API_KEY:
+    raise RuntimeError("OPENAI_API_KEY must be set")
+
+# instantiate client
+client = OpenAI(api_key=OPENAI_API_KEY)
+
+MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+
+def _get_message_content(choice):
+    """
+    Helper to get message content robustly from the SDK return object.
+    Works whether the SDK returns mapping or attribute-access object.
+    """
+    # try attribute-style then mapping-style
+    try:
+        return choice.message.content
+    except Exception:
+        try:
+            return choice["message"]["content"]
+        except Exception:
+            # fallback: try raw choice text
+            try:
+                return choice["text"]
+            except Exception:
+                return ""
+
+def call_llm(company_name: str, numeric_context: dict, question: str = "Provide a board-level summary for CEO"):
+    """
+    Call the OpenAI chat completions API and return parsed JSON if possible.
+    numeric_context is a dict of extracted numbers (revenue, assets, etc.)
+    The model is asked to respond in JSON with keys: tldr, highlights, risks, actions.
+    """
+    system_prompt = (
+        "You are an expert financial analyst. Given structured numeric context for a company, "
+        "produce a short board-level summary focused on performance, trends, risks and recommended actions. "
+        "Always return a JSON object with keys: tldr (string), highlights (list of strings), risks (list of strings), actions (list of strings). "
+        "If you cannot produce structured JSON, still return something parsable and label it clearly."
+    )
+
+    # Compose user content with context
+    user_content = (
+        f"Company: {company_name}\n"
+        f"Numeric context (JSON):\n{json.dumps(numeric_context, indent=2)}\n\n"
+        f"Question: {question}\n\n"
+        "Respond only with a JSON object with keys: tldr, highlights, risks, actions."
+    )
+
+    # call new SDK
+    resp = client.chat.completions.create(
+        model=MODEL,
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_content}
+        ],
+        max_tokens=800,
+        temperature=0.0,
+    )
+
+    # get text from first choice
+    try:
+        choice0 = resp.choices[0]
+        content = _get_message_content(choice0)
+        # ensure string
+        if not isinstance(content, str):
+            content = str(content)
+    except Exception as e:
+        # fallback: return raw resp for debugging
+        return {"raw": f"LLM response parsing failed: {e}", "resp": str(resp)}
+
+    # try to parse JSON
+    content = content.strip()
+    try:
+        parsed = json.loads(content)
+        return parsed
+    except Exception:
+        # If the model returned text, attempt to extract a JSON object substring
+        try:
+            start = content.find("{")
+            end = content.rfind("}")
+            if start != -1 and end != -1 and end > start:
+                sub = content[start:end+1]
+                parsed = json.loads(sub)
+                return parsed
+        except Exception:
+            pass
+    # last resort: return raw text so caller can inspect
+    return {"raw": content}

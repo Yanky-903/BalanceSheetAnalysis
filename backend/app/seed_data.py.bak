@@ -1,0 +1,29 @@
+# backend/app/seed_data.py
+from .db import SessionLocal, engine
+from .models import User, Company, UserCompany, Base
+from .auth import get_password_hash
+import os
+
+def seed():
+    Base.metadata.create_all(bind=engine)
+    db = SessionLocal()
+    if db.query(User).count() == 0:
+        u1 = User(email="analyst@example.com", name="Analyst One", hashed_password=get_password_hash("analystpass"), role="analyst")
+        u2 = User(email="ceo_jio@example.com", name="CEO Jio", hashed_password=get_password_hash("ceopass"), role="ceo", group_name=None)
+        u3 = User(email="ambani@example.com", name="Ambani Family", hashed_password=get_password_hash("adminpass"), role="group_admin", group_name="Reliance Group")
+        db.add_all([u1, u2, u3])
+        db.commit()
+    # create sample company
+    if db.query(Company).count() == 0:
+        c1 = Company(name="Reliance Retail Ventures", ticker="RILR", group_name="Reliance Group",)
+        c2 = Company(name="Jio Platforms", ticker="JIO", group_name="Reliance Group")
+        db.add_all([c1, c2])
+        db.commit()
+        # assign analyst to first company
+        db.execute("INSERT INTO user_companies(user_id, company_id) VALUES ((SELECT id FROM users WHERE email='analyst@example.com'), (SELECT id FROM companies WHERE name='Reliance Retail Ventures'))")
+        db.execute("INSERT INTO user_companies(user_id, company_id) VALUES ((SELECT id FROM users WHERE email='ceo_jio@example.com'), (SELECT id FROM companies WHERE name='Jio Platforms'))")
+        db.commit()
+    db.close()
+
+if __name__ == "__main__":
+    seed()

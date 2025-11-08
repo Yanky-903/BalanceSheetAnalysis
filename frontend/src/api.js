@@ -1,7 +1,7 @@
 // frontend/src/api.js
 import axios from "axios";
 
-const BACKEND = process.env.REACT_APP_BACKEND_URL || "http://localhost:8000";
+const BACKEND = process.env.REACT_APP_BACKEND_URL || "https://balancesheetanalysis-3.onrender.com";
 
 // single axios instance
 const api = axios.create({

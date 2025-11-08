@@ -30,7 +30,7 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:3000",
         "http://127.0.0.1:3000",
-        "https://balancesheetanalysis-r6pedsb7h-yashrajs-projects-b78a66e5.vercel.app/"
+        "https://balancesheetanalysis-psi.vercel.app"
     
         # add other origins you use (e.g. "http://localhost" if using nginx)
     ],

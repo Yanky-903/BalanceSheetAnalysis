@@ -9,7 +9,7 @@ const api = axios.create({
   // you can set other defaults here (timeout, etc.)
 });
 
-// call this to (re)load token from localStorage into axios headers
+// cal this to (re)load token from localStorage into axios headers
 export function setAuthTokenFromStorage() {
   const token = localStorage.getItem("token");
   if (token) {
